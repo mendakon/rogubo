@@ -4,4 +4,3 @@ dist/
 *.log
 .DS_Store
 data/logbo_counts.csv
-

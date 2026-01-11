@@ -12,3 +12,5 @@ services:
       - MISSKEY_API_TOKEN=${MISSKEY_API_TOKEN}
     env_file:
       - .env
+    volumes:
+      - ./data:/app/data

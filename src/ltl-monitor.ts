@@ -1,13 +1,13 @@
-import { Stream } from 'misskey-js';
+import { MisskeyStream } from './misskey-stream.js';
 import { LTLHandler } from './types.js';
 
 // LTL監視クラス
 // 複数のハンドラーを登録して、LTLの投稿を各ハンドラーに配信する
 export class LTLMonitor {
-  private stream: Stream;
+  private stream: MisskeyStream;
   private handlers: LTLHandler[] = [];
 
-  constructor(stream: Stream) {
+  constructor(stream: MisskeyStream) {
     this.stream = stream;
   }
 
@@ -27,10 +27,10 @@ export class LTLMonitor {
     console.log('🚀 LTL監視を開始します');
     console.log(`📡 登録されたハンドラー数: ${this.handlers.length}`);
 
-    // ローカルタイムラインのストリームを購読
-    const localTimelineStream = this.stream.useChannel('localTimeline');
+    // ホームタイムラインのストリームを購読
+    const homeTimelineStream = this.stream.useChannel('homeTimeline');
 
-    localTimelineStream.on('note', async (note) => {
+    homeTimelineStream.on('note', async (note) => {
       try {
         // テキストがない場合はスキップ
         if (!note.text) {
@@ -57,14 +57,10 @@ export class LTLMonitor {
     this.stream.on('_disconnected_', () => {
       console.log('⚠️ ストリーム切断');
     });
-
-    this.stream.on('_error_', (error) => {
-      console.error('❌ ストリームエラー:', error);
-    });
   }
 
   // ストリームを切断
   dispose(): void {
-    this.stream.dispose();
+    this.stream.close();
   }
 }

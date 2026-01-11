@@ -1,13 +1,14 @@
-import { Stream, api as MisskeyApi } from 'misskey-js';
+import { MisskeyStream } from './misskey-stream.js';
+import { MisskeyAPIClient } from './misskey-api.js';
 
 // フォローモニタークラス
 // フォローされたら自動的にフォローバックする
 export class FollowMonitor {
-  private stream: Stream;
-  private api: MisskeyApi.APIClient;
+  private stream: MisskeyStream;
+  private api: MisskeyAPIClient;
   private followedUsers: Set<string>; // すでにフォローしたユーザーIDを記録（重複防止）
 
-  constructor(stream: Stream, api: MisskeyApi.APIClient) {
+  constructor(stream: MisskeyStream, api: MisskeyAPIClient) {
     this.stream = stream;
     this.api = api;
     this.followedUsers = new Set<string>();
@@ -23,6 +24,9 @@ export class FollowMonitor {
     // 通知イベントを監視（フォロー通知を検出）
     mainChannel.on('notification', async (notification: any) => {
       try {
+        // デバッグ: 通知を受信したことをログに出力
+        console.log('🔔 通知を受信しました:', JSON.stringify(notification).substring(0, 200));
+        
         // フォロー通知かチェック
         if (notification.type !== 'follow') {
           return;

@@ -1,5 +1,5 @@
 import { LTLHandler } from '../types.js';
-import { api as MisskeyApi } from 'misskey-js';
+import { MisskeyAPIClient } from '../misskey-api.js';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
@@ -9,6 +9,7 @@ interface UserLogboCount {
   userId: string;
   username: string;
   count: number;
+  lastDate: string; // 最後にいいねした日付 (YYYY-MM-DD形式)
 }
 
 // ログボハンドラー
@@ -16,13 +17,13 @@ interface UserLogboCount {
 export class LogboHandler implements LTLHandler {
   public readonly name = 'LogboHandler';
 
-  private api: MisskeyApi.APIClient;
+  private api: MisskeyAPIClient;
   private likedNotes: Set<string>;
   private userLogboCounts: Map<string, UserLogboCount>;
   private csvFilePath: string;
   private csvDir: string;
 
-  constructor(api: MisskeyApi.APIClient, dataDir: string = 'data') {
+  constructor(api: MisskeyAPIClient, dataDir: string = 'data') {
     this.api = api;
     this.likedNotes = new Set<string>();
     this.userLogboCounts = new Map<string, UserLogboCount>();
@@ -91,42 +92,69 @@ export class LogboHandler implements LTLHandler {
     });
   }
 
-  // いいねを押す関数
+  // 日本時間で今日の日付を取得（YYYY-MM-DD形式）
+  private getTodayJST(): string {
+    const now = new Date();
+    const jst = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9時間
+    return jst.toISOString().split('T')[0];
+  }
+
+  // リアクションを押す関数
   private async likeNote(noteId: string, userId: string, username: string): Promise<void> {
     try {
-      // すでにいいねを押している場合はスキップ
+      // すでにリアクションを押している場合はスキップ
       if (this.likedNotes.has(noteId)) {
         return;
       }
 
+      const today = this.getTodayJST(); // 日本時間で今日の日付
+      const userData = this.userLogboCounts.get(userId);
+      const isFirstToday = !userData || userData.lastDate !== today;
+
+      // リアクションを追加
+      const reaction = isFirstToday ? '⭕️' : '❌';
       await this.api.request('notes/reactions/create', {
         noteId: noteId,
-        reaction: '👍',
+        reaction: reaction,
       });
 
       this.likedNotes.add(noteId);
 
-      // ユーザーのログボ回数を増やす
-      await this.incrementUserLogboCount(userId, username);
-
-      console.log(`✅ いいねを押しました: ${noteId}`);
+      if (isFirstToday) {
+        // 今日初めての場合: 加算する
+        await this.incrementUserLogboCount(userId, username);
+        console.log(`✅ ⭕️リアクションを追加しました: ${noteId} (by @${username})`);
+      } else {
+        // 今日2回目以降の場合: 加算しない（lastDateを更新するだけ）
+        if (userData) {
+          userData.username = username;
+          userData.lastDate = today;
+        }
+        console.log(`⚠️ ❌リアクションを追加しました（加算なし）: ${noteId} (by @${username})`);
+      }
     } catch (error: any) {
-      console.error(`❌ いいねに失敗しました: ${noteId}`, error.message);
+      console.error(`❌ リアクションに失敗しました: ${noteId}`, error.message);
     }
   }
 
   // ユーザーのログボ回数を増やす
   private async incrementUserLogboCount(userId: string, username: string): Promise<void> {
+    const today = this.getTodayJST(); // 日本時間で今日の日付
     const existing = this.userLogboCounts.get(userId);
 
     if (existing) {
-      existing.count++;
+      // 今日初めての場合は回数を増やす
+      if (existing.lastDate !== today) {
+        existing.count++;
+      }
       existing.username = username;
+      existing.lastDate = today;
     } else {
       this.userLogboCounts.set(userId, {
         userId,
         username,
         count: 1,
+        lastDate: today,
       });
     }
 
@@ -134,7 +162,7 @@ export class LogboHandler implements LTLHandler {
     await this.saveCsvData();
 
     const count = this.userLogboCounts.get(userId)?.count || 0;
-    console.log(`📈 @${username} のログボ回数: ${count}回`);
+    console.log(`📈 @${username} のログボ回数: ${count}回 (最終: ${today})`);
   }
 
   // CSVファイルからデータを読み込む
@@ -147,7 +175,7 @@ export class LogboHandler implements LTLHandler {
 
       // CSVファイルが存在しない場合は作成（ヘッダーのみ）
       if (!existsSync(this.csvFilePath)) {
-        const header = 'userId,username,count\n';
+        const header = 'userId,username,count,lastDate\n';
         await writeFile(this.csvFilePath, header, 'utf-8');
         console.log('📁 新しいCSVファイルを作成しました');
         return;
@@ -157,18 +185,28 @@ export class LogboHandler implements LTLHandler {
       const content = await readFile(this.csvFilePath, 'utf-8');
       const lines = content.trim().split('\n');
 
+      // ヘッダー行を確認
+      const header = lines[0];
+      const hasLastDate = header.includes('lastDate');
+
       // ヘッダー行をスキップしてデータを読み込む
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
 
-        const [userId, username, countStr] = line.split(',');
+        const parts = line.split(',');
+        const userId = parts[0];
+        const username = parts[1];
+        const countStr = parts[2];
+        const lastDate = hasLastDate ? parts[3] : '';
+
         if (userId && username && countStr) {
           const count = parseInt(countStr, 10) || 0;
           this.userLogboCounts.set(userId, {
             userId,
             username,
             count,
+            lastDate: lastDate || '',
           });
         }
       }
@@ -188,7 +226,7 @@ export class LogboHandler implements LTLHandler {
       }
 
       // CSVデータを構築
-      const lines: string[] = ['userId,username,count'];
+      const lines: string[] = ['userId,username,count,lastDate'];
 
       // Mapを配列に変換してソート（回数の多い順）
       const sortedData = Array.from(this.userLogboCounts.values())
@@ -197,7 +235,8 @@ export class LogboHandler implements LTLHandler {
       for (const data of sortedData) {
         // カンマや改行を含む場合のエスケープ（シンプルな実装）
         const escapedUsername = data.username.replace(/,/g, '，').replace(/\n/g, ' ');
-        lines.push(`${data.userId},${escapedUsername},${data.count}`);
+        const lastDate = data.lastDate || '';
+        lines.push(`${data.userId},${escapedUsername},${data.count},${lastDate}`);
       }
 
       // CSVファイルに書き込む

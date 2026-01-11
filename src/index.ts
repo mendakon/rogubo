@@ -1,5 +1,6 @@
 import { config } from 'dotenv';
-import { Stream, api as MisskeyApi } from 'misskey-js';
+import { MisskeyAPIClient } from './misskey-api.js';
+import { MisskeyStream } from './misskey-stream.js';
 import { LTLMonitor } from './ltl-monitor.js';
 import { LogboHandler } from './handlers/logbo-handler.js';
 import { FollowMonitor } from './follow-monitor.js';
@@ -16,15 +17,26 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const api = new MisskeyApi.APIClient({
-    origin: INSTANCE_URL,
-    credential: API_TOKEN,
-  });
-
-  const stream = new Stream(INSTANCE_URL, { token: API_TOKEN });
+  const api = new MisskeyAPIClient(INSTANCE_URL, API_TOKEN);
+  const stream = new MisskeyStream(INSTANCE_URL, API_TOKEN);
 
   console.log('🚀 Misskey LTL監視BOTを開始しました');
   console.log(`📡 インスタンス: ${INSTANCE_URL}`);
+
+  // 自分のアカウント情報を取得してログに出力
+  try {
+    const account = await api.request('i') as any;
+    if (!account) {
+      console.error('❌ アカウント情報が取得できませんでした');
+    } else {
+      const username = account.username || account.usernameHost || 'unknown';
+      const displayName = account.name || username;
+      const userId = account.id || 'unknown';
+      console.log(`👤 接続アカウント: @${username}${displayName !== username ? ` (${displayName})` : ''} (${userId})`);
+    }
+  } catch (error: any) {
+    console.error('❌ アカウント情報の取得に失敗しました:', error?.message || error);
+  }
 
   // LTLモニターを作成
   const monitor = new LTLMonitor(stream);

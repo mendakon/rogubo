@@ -3,12 +3,12 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# package.jsonとpackage-lock.jsonをコピー
+# package.jsonとpackage-lock.jsonをコピー（存在する場合）
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# 依存関係をインストール
-RUN npm ci
+# 依存関係をインストール（package-lock.jsonがない場合は生成される）
+RUN npm install
 
 # ソースコードをコピー
 COPY src ./src
@@ -22,7 +22,9 @@ FROM node:20-alpine
 WORKDIR /app
 
 # package.jsonをコピー（実行時に必要）
-COPY package*.json ./
+COPY package.json ./
+# package-lock.jsonをbuilderステージからコピー
+COPY --from=builder /app/package-lock.json ./
 
 # プロダクション依存関係のみインストール
 RUN npm ci --omit=dev
