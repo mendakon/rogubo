@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: misskey-logbo-bot
+    restart: unless-stopped
+    environment:
+      - MISSKEY_INSTANCE_URL=${MISSKEY_INSTANCE_URL}
+      - MISSKEY_API_TOKEN=${MISSKEY_API_TOKEN}
+    env_file:
+      - .env
