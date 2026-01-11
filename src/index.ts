@@ -2,6 +2,7 @@ import { config } from 'dotenv';
 import { Stream, api as MisskeyApi } from 'misskey-js';
 import { LTLMonitor } from './ltl-monitor.js';
 import { LogboHandler } from './handlers/logbo-handler.js';
+import { FollowMonitor } from './follow-monitor.js';
 
 config();
 
@@ -41,6 +42,10 @@ async function main(): Promise<void> {
 
   // LTL監視を開始
   await monitor.start();
+
+  // フォローモニターを作成・開始
+  const followMonitor = new FollowMonitor(stream, api);
+  await followMonitor.start();
 
   // エラーハンドリング
   process.on('unhandledRejection', (error) => {
