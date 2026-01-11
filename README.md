@@ -21,6 +21,13 @@ MISSKEY_INSTANCE_URL=https://your-misskey-instance.com
 MISSKEY_API_TOKEN=your_access_token_here
 ```
 
+**テンプレートファイル**: `env.example`ファイルを参考にして、`.env`ファイルを作成することもできます：
+
+```bash
+cp env.example .env
+# .envファイルを編集して値を設定
+```
+
 #### アクセストークンの取得方法
 
 1. Misskeyインスタンスにログイン
